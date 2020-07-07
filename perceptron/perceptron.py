@@ -20,6 +20,7 @@ class Perceptron(object):
         self.w = np.random.rand(1, m)
         # 初始化偏置为0
         self.b = 0
+
         # 进行epochs次迭代,其实这里应该是 while True，但是有可能因为数据集不是线性可分的导致死循环
         for epoch in range(epochs):
             print("Epoch: ", epoch + 1)
