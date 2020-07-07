@@ -7,16 +7,18 @@ from datasets.minist.loader import load_minist
 class KDNode(object):
     """kd树的节点"""
 
-    def __init__(self, data, depth, parent=None, left=None, right=None):
+    def __init__(self, data, depth, instance=None, parent=None, left=None, right=None):
         """
         :param data: 节点包含的数据
         :param depth: 节点的深度
+        :param instance: 保存的实例点
         :param parent: 节点的父节点
         :param left: 节点的左孩子节点
         :param right: 节点的右孩子节点
         """
         self.data = data
         self.depth = depth
+        self.instance = instance
         self.parent = parent
         self.left = left
         self.right = right
@@ -60,19 +62,25 @@ class KDTree(object):
         # 按照公式 $l = j % k +1$ 求出当前节点应该按照哪一个特征计算
         # 说明：因为下标从0开始，所以这里不需要加1；j是节点的深度，k是特征的数量
         feature_index = node.depth % self.k
-        # 求出第l个特征的中位数
-        median = np.median(node.data[feature_index])
+        # 按第l个特征的数值大小对样本数据进行排序
+        # 不能直接使用 np.median(node.data[feature_index]) 去获取中位数的值，
+        # 因为如果样本数量为偶数，中位数的值没有对应的样本，其次，如果所有样本在该特征上的值一样（例如0），
+        # 也无法使用 [:, np.where(node.data[feature_index] <= median)[0]] 取筛选左右子集
+        # 所以，这里正确的做法应该是先排序，计算出中位数对应样本所在的下标（取左） int(node.data.shape[1]/2)
+        node.data = node.data[:, np.argsort(node.data[feature_index])]  # 排序,argsort() 返回的是数组值从小到大的索引值
+        median_index = int(node.data.shape[1] / 2)  # 中位数对应样本所在的下标
+        node.instance = node.data[:, median_index]
 
-        # 根据中位数划分左右数据集合
-        left_data = node.data[:, np.where(node.data[feature_index] <= median)[0]]
-        right_data = node.data[:, np.where(node.data[feature_index] > median)[0]]
+        # 根据中位数对应实例去划分左右数据集合
+        left_data = node.data[:, :median_index]
+        right_data = node.data[:, median_index+1:]
 
         # 构造左右节点
-        if left_data.shape[1] >= 2:
-            node.left = KDNode(left_data, node.depth+1, node)
+        if left_data.shape[1] > 0:
+            node.left = KDNode(left_data, node.depth+1, parent=node)
             self._recursion_create_node(node.left)
-        if right_data.shape[1] >= 2:
-            node.right = KDNode(right_data, node.depth+1, node)
+        if right_data.shape[1] > 0:
+            node.right = KDNode(right_data, node.depth+1, parent=node)
             self._recursion_create_node(node.right)
 
 
@@ -95,4 +103,4 @@ def load_data(normalize=True):
 if __name__ == '__main__':
     data = load_data()
     clf = KDTree()
-    clf.build(data[2])
+    clf.build(data[0])
