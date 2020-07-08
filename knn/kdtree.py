@@ -103,9 +103,66 @@ class KDTree(object):
         :param k: 近邻个数
         :return: 实例类别label
         """
+        # 向下递归找出包含目标点x的叶子节点
         leaf_node = self._visit_down(self.root, x)
-        print(leaf_node.depth)
-        print(leaf_node.label)
+        # 记录近邻点的数组
+        points = []
+        # 缓存近邻点与实例之间的距离数组
+        distances = []
+        # 向上递归找出k个近邻点
+        self._visit_up(x, leaf_node, k, points, distances)
+
+        # 按多数表决的分类决策规则得出最后的分类标签
+        # 这里需要考虑，不能纯粹按类别数量进行投票
+        # 如果有两个以上类别票数一样时，如何处理？
+        # 这里使用选取总距离更近的一个类别作为输出标签
+        # 类别的投票计数器，key是类别，value是该类别的票数
+        vote_counter = {}
+        # 类别的总距离
+        label_distances = {}
+        for index in range(len(points)):
+            point = points[index]
+            distance = distances[index]
+            # 增加该类别票数
+            vote_counter.setdefault(point.label, 0)
+            vote_counter[point.label] += 1
+            # 增加该类别的总距离
+            label_distances.setdefault(point.label, 0)
+            label_distances[point.label] += distance
+        labels = []  # 最大票数的类别数组
+        max_vote = max(vote_counter.values())  # 最大票数
+        # 遍历投票计数器，统计类别数组
+        for key, value in vote_counter.items():
+            if value == max_vote:
+                labels.append(key)
+        # 判断类别数组的数量是否大于1
+        if len(labels) > 1:  # 如果大于1，表示存在多个类别票数一样，所以需要继续计算
+            label = None  # 最终返回的类别
+            label_distance = float('inf')  # 当前最短的类别总距离，初始化为无穷大
+            # 遍历最大票数的类别数组
+            for candidate_label in labels:
+                # 如果当前候选类别的总距离小于当前最短的类别总距离
+                if label_distances[candidate_label] < label_distance:
+                    label = candidate_label  # 更新返回的类别
+                    label_distance = label_distances[candidate_label]   # 更新当前最短的类别总距离
+            return label
+        else:  # 如果小于等于1，表示只有一个类别，直接返回即可
+            return labels[-1]
+
+    def test(self, x, y, k):
+        """
+        测试kd树
+        :param x: 特征向量矩阵，每一个样本的特征向量按列排
+        :param y: 标签数组
+        :param k: 近邻个数
+        :return: 准确率accuracy
+        """
+        err = 0
+        for i in range(x.shape[1]):
+            predicted = self.predict(x[:, i], k)
+            if predicted != y[i]:
+                err += 1
+        return 1 - (err / x.shape[1])
 
     def _visit_down(self, node, x):
         """
@@ -131,8 +188,55 @@ class KDTree(object):
 
         return leaf_node
 
-    def _visit_up(self, node, ):
-        pass
+    def _visit_up(self, x, node, k, points, distances):
+        """
+        向上递归找出近邻点
+        :param x, 预测实例的特征
+        :param node: kd树节点
+        :param k, 需要的近邻点个数
+        :param points: 记录近邻点的数组
+        :param distances: 预测实例与近邻点之间的距离数组
+        :return:
+        """
+        # 判断当前节点是否为根节点
+        if node.parent is None:  # 如果是根节点
+            # 如果节点的父节点为空，表示已经到达根节点
+            # 这个时候只要在自己身上更新最近邻节点，并且不需要再向上递归
+            self._update_nearest(x, node, k, points, distances)
+            return
+        else:  # 如果不是根节点
+            # 获取兄弟节点
+            brother_node = node.parent.right if node == node.parent.left else node.parent.left
+            # 在自己和兄弟节点身上都要更新最近邻节点
+            self._update_nearest(x, node, k, points, distances)
+            self._update_nearest(x, brother_node, k, points, distances)
+            # 继续向上递归
+            self._visit_up(x, node.parent, k, points, distances)
+
+    def _update_nearest(self, x, node, k, points, distances):
+        """
+        更新最近邻节点
+        :param x, 预测实例的特征
+        :param node: kd树节点
+        :param k, 需要的近邻点个数
+        :param points: 记录近邻点的数组
+        :param distances: 预测实例与近邻点之间的距离数组
+        :return:
+        """
+        # 计算当前节点与预测实例之间的距离
+        distance = self._cal_distance(x, node.feature)
+
+        # 判断近邻点个数是否已经大于k
+        if len(points) > k:  # 如果近邻点个数已经大于k
+            # 获取与预测实例距离最远的节点下标
+            index = distances.index(max(distances))
+            # 如果当前节点与预测实例的距离小于最大距离，则淘汰最大距离所对应的下标
+            if distance < distances[index]:
+                points[index] = node
+                distances[index] = distance
+        else:  # 如果近邻点个数没有大于k，直接加入即可
+            points.append(node)
+            distances.append(distance)
 
     @staticmethod
     def _cal_distance(a, b):
@@ -142,7 +246,7 @@ class KDTree(object):
         :param b: 特征数据
         :return: 欧式距离distance
         """
-        distance = np.sqrt(np.sum(np.power(a-b, 2)))
+        distance = np.sqrt(np.sum(np.power(a - b, 2)))
         return distance
 
 
@@ -166,4 +270,4 @@ if __name__ == '__main__':
     data = load_data()
     clf = KDTree()
     clf.build(data[0], data[1])
-    clf.predict(data[2][:, 9], 3)
+    print("Accuracy on test set(k=3): ", clf.test(data[2], data[3], 3))
