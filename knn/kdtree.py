@@ -1,4 +1,5 @@
 import time
+import heapq
 
 import numpy as np
 from datasets.minist.loader import load_minist
@@ -75,7 +76,7 @@ class KDTree(object):
         sort_index = np.argsort(node.features[feature_index])  # argsort() 返回的是数组值从小到大的索引值
         node.features = node.features[:, sort_index]  # 对特征数据进行排序
         node.labels = node.labels[sort_index]  # 对标签数据进行相同的排序，保持特征-标签对应的一致性
-        median_index = int(node.features.shape[1] / 2)  # 中位数对应样本所在的下标(不严格中位数，取靠左的)
+        median_index = int((node.features.shape[1] - 1) / 2)  # 中位数对应样本所在的下标(不严格中位数)
 
         # 设置节点保存的实例特征和标签
         node.feature = node.features[:, median_index]
@@ -94,6 +95,55 @@ class KDTree(object):
         if left_features.shape[1] > 0:
             node.right = KDNode(right_features, right_labels, node.depth + 1, parent=node)
             self._recursion_create_node(node.right)
+
+    def predict(self, x, k):
+        """
+        预测输入的实例的类别
+        :param x: 实例特征
+        :param k: 近邻个数
+        :return: 实例类别label
+        """
+        leaf_node = self._visit_down(self.root, x)
+        print(leaf_node.depth)
+        print(leaf_node.label)
+
+    def _visit_down(self, node, x):
+        """
+        向下递归找出包含目标点x的叶子节点
+        :param node: kd树节点
+        :param x: 目标点x
+        :return: 叶子节点leaf_node
+        """
+        # 如果没有左右孩子节点即表示为叶子节点
+        if node.left is None and node.right is None:
+            return node
+
+        # 计算使用哪一个维度的特征进行比较
+        feature_index = node.depth % self.k
+        # 获取切分点的坐标（即特征值）
+        cut_point_feature = node.feature[feature_index]
+
+        # 若目标值x当前维度的坐标小于切分点的坐标，则移动到左子节点，否则移动到右子节点
+        if x[feature_index] < cut_point_feature:
+            leaf_node = self._visit_down(node.left, x)
+        else:
+            leaf_node = self._visit_down(node.right, x)
+
+        return leaf_node
+
+    def _visit_up(self, node, ):
+        pass
+
+    @staticmethod
+    def _cal_distance(a, b):
+        """
+        计算两点之间的欧式距离
+        :param a: 特征数据
+        :param b: 特征数据
+        :return: 欧式距离distance
+        """
+        distance = np.sqrt(np.sum(np.power(a-b, 2)))
+        return distance
 
 
 def load_data(normalize=True):
@@ -116,3 +166,4 @@ if __name__ == '__main__':
     data = load_data()
     clf = KDTree()
     clf.build(data[0], data[1])
+    clf.predict(data[2][:, 9], 3)
