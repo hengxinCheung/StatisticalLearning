@@ -12,7 +12,6 @@ class NavieBayes(object):
         # key是一个三元组 (feature_index, feature_value, class_label)，value是其概率
         # 其中，feature_index表示是第几个特征，feature_value是特征值，class_label是类别前提
         self.feature_class_probability = {}
-        # 进行了log函数处理的条件概率
         self.log_feature_class_probability = {}
         # 特征维度
         self.feature_num = 0
@@ -45,7 +44,7 @@ class NavieBayes(object):
         for class_label, class_count in zip(class_labels, class_counts):
             # 这里做一个处理：为了防止某个标签没有对应的样本，在分子上加上l，在分母上加上l*k
             # 其中l是大于等于零的lambda常数，常取1；k是类别标签的数量
-            # 同时对概率使用log函数进行处理，防止在预测时各个概率连乘之后的最终概率值过小导致下溢
+            # 注意：这里可以对概率使用log函数进行处理，防止在预测时各个概率连乘之后的最终概率值过小导致下溢
             self.class_probability[class_label] = np.log((class_count + l) / (class_total + l * len(class_labels)))
 
         # 获取特征维度
@@ -70,7 +69,7 @@ class NavieBayes(object):
                     key = f"{feature_index}, {feature_value}, {class_label}"
                     # 计算其概率值，分子加上常数l，分母加上S_j*l
                     # 其中，S_j表示特征可能取值的个数
-                    # 原公式中是没有最后的+1的，这里是考虑到如果某一个维度的都是同一个值，但是在测试集中出现了其他值
+                    # 原公式中是没有最后的+1的，这里是考虑到如果某一个维度的都是同一个值，但是在测试集中出现了其他值的情况
                     # 即认为一个特征值对应的类别不能是百分之百的
                     value = (feature_value_count + l) / (class_count + l * (len(feature_values) + 1))
                     self.feature_class_probability[key] = value
@@ -84,7 +83,7 @@ class NavieBayes(object):
         """
         预测输入的实例的类别
         :param x: 实例特征
-        :return: 每一个类别的概率数组
+        :return: 预测的标签和每一个类别的概率数组
         """
         # 所有类别的预测概率数组
         predicted_probability = np.zeros(len(self.class_probability.keys()))
@@ -106,14 +105,16 @@ class NavieBayes(object):
                 value = self.log_feature_class_probability.get(key, 0)
                 # 如果概率为0，表示这个特征值没有在训练集中出现,需要用原始的概率去计算，这里也可以使用一个极小的数来代替
                 if value == 0:
+                    # # 通过原始概率求得这个未出现过的特征值的估计概率
                     # temp_value = 1
                     # for other_feature_value in self.feature_index_values[f"{class_label}, {feature_index}"]:
                     #     temp_key = f"{feature_index}, {other_feature_value}, {class_label}"
                     #     temp_value -= self.feature_class_probability[temp_key]
                     # # 对概率使用log函数进行处理
                     # value = np.log(temp_value)
-                    value = np.log(0.00001)
-                # 因为概率使用了log函数进行处理，所以这里可以进行累加即可
+
+                    value = np.log(0.000001)
+                # 如果概率使用了log函数进行处理，这里进行累加即可
                 temp_probability += value
             # 如果当前预测的概率大于预测标签的概率，更新预测的标签
             if temp_probability > predicted_label_probability:
@@ -121,9 +122,6 @@ class NavieBayes(object):
                 predicted_label_probability = temp_probability
             # 记录预测结果
             predicted_probability[index] = temp_probability
-
-        # 对预测概率数组进行处理
-        predicted_probability /= np.sum(predicted_probability)
 
         return predicted_label, predicted_probability
 
