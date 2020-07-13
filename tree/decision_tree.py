@@ -4,6 +4,97 @@ import numpy as np
 from datasets.minist.loader import load_minist
 
 
+def calc_gini(d):
+    """
+    计算基尼指数
+    :param d: 一维数据数组
+    :return: 基尼指数
+    """
+    # 数组长度
+    length = len(d)
+    # 获取该一维数组中各个元素的集合和对应的计数值
+    values, counts = np.unique(d, return_counts=True)
+    # 计算基尼指数的公式是：
+    # Gini(D) = \sum_{k=1}^{K}p_k(1-p_k) = 1 - \sum_{k=1}^{K}(p_k)^2
+    # 初始基尼指数为1
+    gini = 1
+    # 遍历数据元素集合
+    for value, count in zip(values, counts):
+        gini -= np.power(count / length, 2)
+    return gini
+
+
+def calc_information_gini(y, y1, y2):
+    """
+    计算信息基尼指数
+    :param y: 标签集
+    :param y1: 标签子集
+    :param y2: 标签子集
+    :return: 信息基尼指数
+    """
+    information_gini = len(y1) / len(y) * calc_gini(y1)
+    information_gini += len(y2) / len(y) * calc_gini(y2)
+
+    return information_gini
+
+
+def calc_entropy(d):
+    """
+    计算一维数组的熵
+    :param d: 一维数据数组
+    :return: 熵
+    """
+    # 数组长度
+    length = len(d)
+    # 获取该一维数组中各个元素的集合和对应的计数值
+    values, counts = np.unique(d, return_counts=True)
+    # 初始熵的值为0
+    entropy = 0
+    # 遍历每一个元素和其对应值以计算各部分的熵值
+    # 熵的公式是：-\sum_{i=1}^{n}p_i\log{p_i}
+    for value, count in zip(values, counts):
+        entropy -= (count / length) * np.log2((count / length))
+
+    return entropy
+
+
+def calc_information_gain(y, y1, y2):
+    """
+    计算信息增益
+    :param y: 标签集
+    :param y1: 标签子集
+    :param y2: 标签子集
+    :return: 信息增益
+    """
+    # 计算整体数据集的熵值
+    entropy = calc_entropy(y)
+    # 计算标签子集的占比
+    p = len(y1) / len(y)
+    # 计算信息增益
+    information_gain = entropy - (p * calc_entropy(y1)
+                                  + (1 - p) * calc_entropy(y2))
+
+    return information_gain
+
+
+def calc_information_gain_ratio(y, y1, y2):
+    """
+    计算信息增益率
+    :param y: 标签集
+    :param y1: 标签子集
+    :param y2: 标签子集
+    :return: 信息增益率
+    """
+    # 计算整体数据集的熵值
+    entropy = calc_entropy(y)
+    # 计算信息增益
+    information_gain = calc_information_gain(y, y1, y2)
+    # 计算信息增益率
+    information_gain_ratio = information_gain / entropy
+
+    return information_gain_ratio
+
+
 class DecisionTreeNode(object):
     """决策树节点"""
     pass
@@ -104,75 +195,11 @@ class BaseDecisionTree(object):
 class ClassifyDecisionTree(BaseDecisionTree):
     """分类决策树"""
 
-    @classmethod
-    def calc_gini(cls, d):
-        """
-        计算基尼指数
-        :param d: 一维数据数组
-        :return: 基尼指数
-        """
-        # 数组长度
-        length = len(d)
-        # 获取该一维数组中各个元素的集合和对应的计数值
-        values, counts = np.unique(d, return_counts=True)
-        # 计算基尼指数的公式是：
-        # Gini(D) = \sum_{k=1}^{K}p_k(1-p_k) = 1 - \sum_{k=1}^{K}(p_k)^2
-        # 初始基尼指数为1
-        gini = 1
-        # 遍历数据元素集合
-        for value, count in zip(values, counts):
-            gini -= np.power(count / length, 2)
-        return gini
-
-    @classmethod
-    def calc_entropy(cls, d):
-        """
-        计算一维数组的熵
-        :param d: 一维数据数组
-        :return: 熵
-        """
-        # 数组长度
-        length = len(d)
-        # 获取该一维数组中各个元素的集合和对应的计数值
-        values, counts = np.unique(d, return_counts=True)
-        # 初始熵的值为0
-        entropy = 0
-        # 遍历每一个元素和其对应值以计算各部分的熵值
-        # 熵的公式是：-\sum_{i=1}^{n}p_i\log{p_i}
-        for value, count in zip(values, counts):
-            entropy -= (count / length) * np.log2((count / length))
-
-        return entropy
-
-    @classmethod
-    def calc_information_gain(cls, y, y1, y2):
-        """
-        计算每一个维度的特征的信息增益
-        :param y: 标签集
-        :param y1: 标签子集
-        :param y2: 标签子集
-        :return: 信息增益
-        """
-        # 计算整体数据集的熵值
-        entropy = cls.calc_entropy(y)
-        # 计算标签子集的占比
-        p = len(y1) / len(y)
-        # 计算信息增益
-        information_gain = entropy - (p * cls.calc_entropy(y1)
-                                      + (1 - p) * cls.calc_entropy(y2))
-
-        return information_gain
-
-    @classmethod
-    def calc_information_gain_ratio(cls, y, y1, y2):
-        """
-        计算每一个维度的特征的信息增益
-        :param y: 标签集
-        :param y1: 标签子集
-        :param y2: 标签子集
-        :return: 信息增益率
-        """
-
+    SUPPORTED_CRITERION = {
+        "information_gain": calc_information_gain,
+        "information_gain_ratio": calc_information_gain_ratio,
+        "information_gini": calc_information_gini,
+    }
 
 
 class RegressionDecisionTree(BaseDecisionTree):
