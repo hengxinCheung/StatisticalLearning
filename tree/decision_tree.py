@@ -103,11 +103,18 @@ def calc_feature_information_gain_ratio(y, y1, y2):
 class DecisionTreeNode(object):
     """决策树节点"""
 
-    def __init__(self, feature_idx, cut_point, class_, left, right, parent, depth):
+    def __init__(self,
+                 feature_idx=None,
+                 cut_point=None,
+                 class_label=None,
+                 left=None,
+                 right=None,
+                 parent=None,
+                 depth=0):
         """
         :param feature_idx: 最优特征索引
         :param cut_point: 最优切分点
-        :param class_: 类别标签
+        :param class_label: 类别标签
         :param left: 左子树
         :param right: 右子树
         :param parent: 父节点
@@ -115,7 +122,7 @@ class DecisionTreeNode(object):
         """
         self.feature_idx = feature_idx
         self.cut_point = cut_point
-        self.class_ = class_
+        self.class_label = class_label
         self.left = left
         self.right = right
         self.parent = parent
@@ -155,13 +162,7 @@ class BaseDecisionTree(object):
         :param y:
         :return:
         """
-        self.root = DecisionTreeNode(feature_idx=None,
-                                     cut_point=None,
-                                     class_=None,
-                                     left=None,
-                                     right=None,
-                                     parent=None,
-                                     depth=0)
+        self.root = DecisionTreeNode()
         self._build_tree(self.root, x, y)
 
     def _build_tree(self, node, x, y):
@@ -172,8 +173,8 @@ class BaseDecisionTree(object):
         :param y: 标签集
         :return:
         """
-        # 计算决策树节点的类别
-        node.class_ = self.calc_class(y)
+        # 计算该节点的类别
+        node.class_label = self.calc_class(y)
 
         # 获取特征个数和样本个数
         n_features, n_samples = np.shape(x)
@@ -184,7 +185,7 @@ class BaseDecisionTree(object):
 
         # 切分特征下标
         cut_feature_idx = None
-        # 切分点
+        # 切分点(特征值)
         cut_point = None
         # 当前最大的不纯度
         current_impurity = 0
@@ -207,6 +208,10 @@ class BaseDecisionTree(object):
                     cut_point = feature_value
                     current_impurity = impurity
 
+        # 为当前节点保存最优切分特征、切分点
+        node.feature_idx = cut_feature_idx
+        node.cut_point = cut_point
+
         # 如果当前最大的不纯度大于调整拆分的最小不纯度，继续递归构造树节点
         if current_impurity > self.min_impurity_split:
             # 根据索引获取切分最优特征
@@ -220,20 +225,56 @@ class BaseDecisionTree(object):
             right_x = x[:, right_index[0]]
             right_y = y[right_index]
             # 构建左右子树
-            node.left = self._build_tree(left_x, left_y, node.depth+1)
-            node.right = self._build_tree(right_x, right_y, node.depth+1)
+            if len(left_y) >= self.min_samples_split:
+                node.left = DecisionTreeNode(parent=node, depth=node.depth+1)
+                self._build_tree(node.left, left_x, left_y)
+            if len(right_y) >= self.min_samples_split:
+                node.right = DecisionTreeNode(parent=node, depth=node.depth+1)
+                self._build_tree(node.right, right_x, right_y)
 
-    def predict(self, x):
+        return
+
+    def predict(self, x, node=None):
         """
         使用决策树进行单个样本的预测
-        :param x:
-        :return:
+        :param x: 预测实例
+        :param node: 决策树节点
+        :return: 预测实例的类别
         """
-        pass
+        if node is None:
+            node = self.root
+
+        class_label = node.class_label
+        if node.left is None and node.right is None:
+            return class_label
+
+        # 选择要测试的特征，得到其值
+        test_feature_value = x[node.feature_idx]
+        if test_feature_value == node.cut_point:
+            if node.left is not None:
+                class_label = self.predict(x, node.left)
+        else:
+            if node.right is not None:
+                class_label = self.predict(x. node.right)
+        return class_label
 
     def calc_class(self, y):
         """计算叶子节点的类别信息"""
         raise NotImplemented
+
+    def test(self, x, y):
+        """
+        测试决策树
+        :param x: 特征集
+        :param y: 标签集
+        :return: 准确率
+        """
+        err = 0
+        for i in range(x.shape[1]):
+            predicted = self.predict(x[:, i])
+            if predicted != y[i]:
+                err += 1
+        return 1 - (err / x.shape[1])
 
 
 class ClassifyDecisionTree(BaseDecisionTree):
@@ -266,12 +307,24 @@ class RegressionDecisionTree(BaseDecisionTree):
     pass
 
 
+def load_data():
+    """加载minist数据集"""
+    train_images, train_labels, test_images, test_labels = load_minist()
+
+    # 对特征数据做转置，即一列代表一个样本
+    train_images = np.transpose(train_images)
+    test_images = np.transpose(test_images)
+
+    return train_images, train_labels, test_images, test_labels
+
+
 if __name__ == '__main__':
-    a = np.array([[1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3],
-                  [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
-                  [0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
-                  [1, 2, 2, 1, 1, 1, 2, 2, 3, 3, 3, 2, 2, 3, 1]])
-    b = np.array([0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0])
-    A = a[0]
-    clf = ClassifyDecisionTree('gini')
-    clf.fit(a, b)
+    data = load_data()
+    print("Starting build decision tree...")
+    start = time.process_time()
+    clf = ClassifyDecisionTree(criterion='information_gain')
+    clf.fit(data[0], data[1])
+    end = time.process_time()
+    print(f"Building decision tree complete, cost time {end-start}s")
+    print("Accuracy on test set: ", clf.test(data[2], data[3]))
+
